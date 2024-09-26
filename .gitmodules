@@ -1,3 +1,6 @@
 [submodule "extern/flatbuffers"]
 	path = extern/flatbuffers
 	url = https://github.com/google/flatbuffers.git
+[submodule "extern/KaMinPar"]
+	path = extern/KaMinPar
+	url = https://github.com/KaHIP/KaMinPar.git

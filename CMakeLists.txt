@@ -12,7 +12,7 @@ if(CCACHE_PROGRAM)
 endif()
 project(KaHIP C CXX)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) 
@@ -88,6 +88,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/extern/flatbuffers
         ${CMAKE_CURRENT_BINARY_DIR}/flatbuffers-build
         EXCLUDE_FROM_ALL)
 
+add_subdirectory(extern/KaMinPar EXCLUDE_FROM_ALL)
 
 
 
@@ -144,3 +145,7 @@ target_compile_definitions(heistream_edge PRIVATE "-DMODE_STREAMPARTITION")
 target_link_libraries(heistream_edge ${OpenMP_CXX_LIBRARIES} flatbuffers)
 #target_link_libraries(heistream_edge flatbuffers)
 install(TARGETS heistream_edge DESTINATION bin)
+
+add_executable(heistream_compressed_graph_io app/streampartition_compressed_graph.cpp $<TARGET_OBJECTS:libkaffpa> )
+target_compile_definitions(heistream_compressed_graph_io PRIVATE "-DMODE_STREAMPARTITION")
+target_link_libraries(heistream_compressed_graph_io ${OpenMP_CXX_LIBRARIES} flatbuffers kaminpar_io kaminpar_shm)

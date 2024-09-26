@@ -5,3 +5,5 @@ tags
 build
 out
 compileDEBUG.sh
+.cache/*
+.vscode/*
