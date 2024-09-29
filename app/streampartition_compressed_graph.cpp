@@ -119,7 +119,7 @@ load_neighborhoods(PartitionConfig &partition_config,
   for (LongNodeID i = 0; i < num_lines; ++i) {
     auto &neighbors = (*input)[i];
     neighbors.clear();
-    compressed_graph.adjacent_nodes(u + i, [&](const NodeID adjacent_node) {
+    compressed_graph.adjacent_nodes(u + i, [&](const auto adjacent_node) {
       neighbors.push_back(adjacent_node + 1);
     });
   }
@@ -128,12 +128,13 @@ load_neighborhoods(PartitionConfig &partition_config,
 }
 
 EdgeWeight edge_cut(PartitionConfig &config, const auto &compressed_graph) {
+  static_assert(sizeof(kaminpar::shm::EdgeWeight) <= sizeof(EdgeWeight));
   EdgeWeight cut = 0;
 
-  for (const NodeID u : compressed_graph.nodes()) {
+  for (const auto u : compressed_graph.nodes()) {
     const PartitionID partitionIDSource = (*config.stream_nodes_assign)[u];
 
-    compressed_graph.adjacent_nodes(u, [&](const NodeID v, const EdgeWeight w) {
+    compressed_graph.adjacent_nodes(u, [&](const auto v, const auto w) {
       const PartitionID partitionIDTarget = (*config.stream_nodes_assign)[v];
       cut += (partitionIDSource != partitionIDTarget) ? w : 0;
     });
