@@ -26,6 +26,10 @@
 #include "timer.h"
 #include "tools/flat_buffer_writer.h"
 
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include <apps/io/shm_compressed_graph_binary.h>
 
 #define MIN(A, B) ((A) < (B)) ? (A) : (B)
@@ -142,26 +146,22 @@ EdgeWeight edge_cut(PartitionConfig &config, const auto &compressed_graph) {
 
   return cut / 2;
 }
-} // namespace
 
-int main(int argn, char **argv) {
-  std::cout << R"(
-██   ██ ███████ ██ ███████ ████████ ██████  ███████  █████  ███    ███
-██   ██ ██      ██ ██         ██    ██   ██ ██      ██   ██ ████  ████
-███████ █████   ██ ███████    ██    ██████  █████   ███████ ██ ████ ██
-██   ██ ██      ██      ██    ██    ██   ██ ██      ██   ██ ██  ██  ██
-██   ██ ███████ ██ ███████    ██    ██   ██ ███████ ██   ██ ██      ██
+void run_heistream(const std::size_t child, std::string &graph_filename,
+                   PartitionConfig &partition_config,
+                   const auto &compressed_graph) {
+  partition_config.seed = child;
+  srand(partition_config.seed);
+  random_functions::setSeed(partition_config.seed);
 
+  std::stringstream ss_log_name;
+  ss_log_name << "log-seed" << child << ".log";
+  std::ofstream ofs(ss_log_name.str());
+  std::cout.rdbuf(ofs.rdbuf());
 
-███    ██  ██████  ██████  ███████
-████   ██ ██    ██ ██   ██ ██
-██ ██  ██ ██    ██ ██   ██ █████
-██  ██ ██ ██    ██ ██   ██ ██
-██   ████  ██████  ██████  ███████
-    )" << std::endl;
-
-  PartitionConfig partition_config;
-  std::string graph_filename;
+  std::stringstream ss_partition_name;
+  ss_partition_name << "partition-seed" << child << ".log";
+  partition_config.filename_output = ss_partition_name.str();
 
   timer t, processing_t, io_t, model_t;
   double global_mapping_time = 0;
@@ -173,33 +173,7 @@ int main(int argn, char **argv) {
   balance_configuration bc;
 
   std::vector<std::vector<LongNodeID>> *input = NULL;
-
-  bool is_graph_weighted = false;
-  bool suppress_output = false;
-  bool recursive = false;
-
-  int ret_code =
-      parse_parameters(argn, argv, partition_config, graph_filename,
-                       is_graph_weighted, suppress_output, recursive);
-  if (ret_code) {
-    return 0;
-  }
-
-  std::ofstream ofs;
-  ofs.open("/dev/null");
-  if (suppress_output) {
-    std::cout.rdbuf(ofs.rdbuf());
-  }
-  srand(partition_config.seed);
-  random_functions::setSeed(partition_config.seed);
-
-  partition_config.LogDump(stdout);
-  partition_config.graph_filename = graph_filename;
-  partition_config.stream_input = true;
   graph_access *G = new graph_access();
-
-  const auto &compressed_graph =
-      kaminpar::shm::io::compressed_binary::read(graph_filename);
 
   int &passes = partition_config.num_streams_passes;
   for (partition_config.restream_number = 0;
@@ -239,7 +213,6 @@ int main(int argn, char **argv) {
       // perform partitioning
       graph_partitioner partitioner;
       partitioner.perform_partitioning(partition_config, *G);
-      ofs.close();
 
       // permanent assignment
       graph_io_stream::generalizeStreamPartition(partition_config, *G);
@@ -300,8 +273,82 @@ int main(int argn, char **argv) {
                                       global_mapping_time, global_mapping_time,
                                       total_time, maxRSS);
   fb_writer.write(graph_filename, partition_config);
+}
+} // namespace
 
-  return 0;
+int main(int argn, char **argv) {
+  std::cout << R"(
+██   ██ ███████ ██ ███████ ████████ ██████  ███████  █████  ███    ███
+██   ██ ██      ██ ██         ██    ██   ██ ██      ██   ██ ████  ████
+███████ █████   ██ ███████    ██    ██████  █████   ███████ ██ ████ ██
+██   ██ ██      ██      ██    ██    ██   ██ ██      ██   ██ ██  ██  ██
+██   ██ ███████ ██ ███████    ██    ██   ██ ███████ ██   ██ ██      ██
+
+
+███    ██  ██████  ██████  ███████
+████   ██ ██    ██ ██   ██ ██
+██ ██  ██ ██    ██ ██   ██ █████
+██  ██ ██ ██    ██ ██   ██ ██
+██   ████  ██████  ██████  ███████
+    )" << std::endl;
+
+  PartitionConfig partition_config;
+  std::string graph_filename;
+
+  bool is_graph_weighted = false;
+  bool suppress_output = false;
+  bool recursive = false;
+  int ret_code =
+      parse_parameters(argn, argv, partition_config, graph_filename,
+                       is_graph_weighted, suppress_output, recursive);
+  if (ret_code) {
+    return 0;
+  }
+
+  partition_config.LogDump(stdout);
+  partition_config.graph_filename = graph_filename;
+  partition_config.stream_input = true;
+
+  const auto &compressed_graph =
+      kaminpar::shm::io::compressed_binary::read(graph_filename);
+
+  const std::size_t num_processes = 5;
+  pid_t children[num_processes];
+
+  for (std::size_t i = 0; i < num_processes; ++i) {
+    pid_t child = fork();
+
+    if (child == 0) {
+      std::streambuf *coutbuf = std::cout.rdbuf();
+      std::cout << "Starting seed " << i << std::endl;
+
+      run_heistream(i, graph_filename, partition_config, compressed_graph);
+
+      std::cout.rdbuf(coutbuf);
+      std::cout << "Seed " << i << " finished" << std::endl;
+
+      _exit(EXIT_SUCCESS);
+    } else if (child == -1) {
+      std::cerr << "Failed to fork" << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+
+    children[i] = child;
+  }
+
+  for (std::size_t i = 0; i < num_processes; ++i) {
+    pid_t child = children[i];
+
+    int status;
+    waitpid(child, &status, 0);
+
+    if (status != EXIT_SUCCESS) {
+      std::cerr << "Seed " << i << " exited with failure code" << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+  }
+
+  return EXIT_SUCCESS;
 }
 
 void config_multibfs_initial_partitioning(PartitionConfig &partition_config) {
