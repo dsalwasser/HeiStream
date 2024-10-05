@@ -163,6 +163,8 @@ void run_heistream(const std::size_t child, std::string &graph_filename,
   ss_partition_name << "partition-seed" << child << ".log";
   partition_config.filename_output = ss_partition_name.str();
 
+  std::cout << "Prior Maximum Resident Set Size (KB): " << getMaxRSS() << std::endl;
+
   timer t, processing_t, io_t, model_t;
   double global_mapping_time = 0;
   double buffer_io_time = 0;
